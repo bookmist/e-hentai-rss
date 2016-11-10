@@ -4,17 +4,25 @@ var express = require('express');
 var app = express();
 var logIndex = 1;
 
+//var Parse = {};
+//Parse['']
+var needle = require('needle');
+
 // Global app configuration section
 app.set('views', 'cloud/views');  // Specify the folder to find templates
 app.set('view engine', 'ejs');    // Set the template engine
-var bodyParser = app.use(express.bodyParser());    // Middleware for reading request body
+var bodyParser = require('body-parser');
+//var bodyParser = app.use(express.bodyParser());    // Middleware for reading request body
 
 //requires
-var rss = require('cloud/rss');
+var rss = require('rss');
 
 //functions
 
 function htmlspecialchars(html) {
+  if (typeof html !=='string'){
+    html = html.toString();
+  }
   // Сначала необходимо заменить &
   html = html.replace(/&/g, "&amp;");
   // А затем всё остальное в любой последовательности
@@ -171,18 +179,28 @@ app.get('/param', function(req, res) {
   res.json(req.query);
 });
 
+app.get('/needle', function(req, res) {
+  res.send(typeof needle.get);
+});
+
 app.get('/load', function(req, res) {
   //Parse.Cloud.httpRequest({
-  cookiedHttpRequest({
+//  cookiedHttpRequest({
+  needle.get('http://g.e-hentai.org/home.php',{
+    //'http://exhentai.org/'
     //url: 'http://www.parse.com/',
     //url: 'http://ya.ru/',
     //url: 'http://g.e-hentai.org/home.php',
-    url: 'http://exhentai.org/',
-    followRedirects: true
-  }).then(function(httpResponse) {
-    res.send(htmlspecialchars(httpResponse.text));
-  },function(httpResponse) {
-    res.send('Request '+ httpResponse.url +' failed with response code ' + httpResponse.status);
+    follow: 10,
+    follow_set_cookies: true,
+    follow_set_referer: true
+  },function(err, httpResponse){
+    if (!!err){
+      res.send('Request '+ httpResponse.url +' failed with response code ' + httpResponse.statusCode );
+    } else {
+      //res.send('Request '+ httpResponse.url +' successed with response code ' + httpResponse.statusCode );
+      res.send(htmlspecialchars(httpResponse.body));
+    }
   });
 });
 
@@ -432,4 +450,4 @@ feed.item({
 // });
 
 // Attach the Express app to Cloud Code.
-app.listen();
+app.listen(8081);
