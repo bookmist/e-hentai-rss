@@ -8,35 +8,11 @@ var bodyParser = require('body-parser');
 
 //requires
 var rss = require('rss');
-/*
-var tough = require('tough-cookie')
-
-var cookieStore = new tough.MemoryCookieStore();
-//var cookieStore = tough.MemoryCookieStore;
-
-var CookieJar = new tough.CookieJar(cookieStore);
-  
-var request = require('request');
-var request =  request.defaults({jar: true});
-//request.cookies = request.jar();
-request = request.jar(cookieStore);
-request.cookies = request._jar;
-request.cookies.store.synchronous = true;
-
-console.log( cookieStore.constructor.name);
-console.log( CookieJar.constructor.name);
-console.log( CookieJar.store.constructor.name);
-
-console.log( request.cookies.store.constructor.name);
-
-console.log((request._jar && request._jar.setCookie));
-*/
 
 var request = require('request');
-var j = request.jar()
-request = request.defaults({jar:j})
-
-console.log((request._jar && request._jar.setCookie));
+var j = request.jar();
+request = request.defaults({ jar : j });
+request.cookies=j;
 
 //functions
 
@@ -195,12 +171,12 @@ app.get('/needle', function(req, res) {
 });
 
 app.get('/load', function(req, res) {
-  request({url:'http://g.e-hentai.org/home.php'}, 
+  request({url:'http://g.e-hentai.org/home.php'},
   function (error, response, body) {
       if (!error && response.statusCode == 200) {
           res.send(htmlspecialchars(response.body));
       } else {
-          res.send('Request '+ response.url +' failed with response code ' + response.statusCode );  
+          res.send('Request '+ response.url +' failed with response code ' + response.statusCode );
       }
   });
 });
@@ -212,17 +188,17 @@ function parseEx(page){
   for (var i = 1; i < rows.length; i++) {
     var cols = rows[i].split('<td');
     result = {};
-    result.type = safeGet(cols[1].match(/alt="(\w+)"/),1); 
-    result.date = safeGet(cols[2].match(/>([\d- :]+)<\//),1); 
-    result.uploader = safeGet(cols[4].match(/uploader\/([^"]+)"/),1); 
+    result.type = safeGet(cols[1].match(/alt="(\w+)"/),1);
+    result.date = safeGet(cols[2].match(/>([\d- :]+)<\//),1);
+    result.uploader = safeGet(cols[4].match(/uploader\/([^"]+)"/),1);
     var cols2 = cols[3].split('<div class=');
-    result.image = 'http://exhentai.org/'+safeGet(cols2[1].match(/(t\/[^\.]+\.jpg)/),1); 
+    result.image = 'http://exhentai.org/'+safeGet(cols2[1].match(/(t\/[^\.]+\.jpg)/),1);
     if (cols2[3].substr(0,5) === '"it5"') {
-      result.url = safeGet(cols2[3].match(/href="(http:\/\/exhentai.org\/g\/[\d\w\/]+)"/),1); 
-      result.title = safeGet(cols2[3].match(/>([^<]+)<\//),1); 
+      result.url = safeGet(cols2[3].match(/href="(http:\/\/exhentai.org\/g\/[\d\w\/]+)"/),1);
+      result.title = safeGet(cols2[3].match(/>([^<]+)<\//),1);
     } else {
-      result.url = safeGet(cols2[4].match(/href="(http:\/\/exhentai.org\/g\/[\d\w\/]+)"/),1); 
-      result.title = safeGet(cols2[4].match(/>([^<]+)<\//),1); 
+      result.url = safeGet(cols2[4].match(/href="(http:\/\/exhentai.org\/g\/[\d\w\/]+)"/),1);
+      result.title = safeGet(cols2[4].match(/>([^<]+)<\//),1);
       result.tagtext = '<div class=' + cols2[3];
     }
     //result.raw = cols;
@@ -236,7 +212,7 @@ function exhentaiToRss(html){
   var rows = parseEx(html);
   var feed = new rss({
       title: safeGet(html.match(/<title>([^<]+)<\/title>/),1),
-  });       
+  });
   rows.forEach(function(row){
     feed.item({
         title: row.title,
@@ -246,7 +222,7 @@ function exhentaiToRss(html){
         author: row.uploader, // optional - defaults to feed author property
         date: row.date, // any format that js Date can parse.
         //enclosure: {url:'...', file:'path-to-file'}, // optional enclosure
-    });    
+    });
   });
   return feed;
 }
@@ -276,7 +252,7 @@ app.get('/parse', function(req, res) {
 });
 
 app.get('/test', function(req, res) {
-  request({url:'http://g.e-hentai.org/home.php'}, 
+  request({url:'http://g.e-hentai.org/home.php'},
   function (error, httpResponse, body) {
       if (!error && httpResponse.statusCode == 200) {
     // success
@@ -304,14 +280,14 @@ app.get('/test', function(req, res) {
       '</pre>'
     );
       } else {
-          //res.send('Request '+ httpResponse.url +' failed with response code ' + httpResponse.statusCode );  
+          //res.send('Request '+ httpResponse.url +' failed with response code ' + httpResponse.statusCode );
 	  res.json(httpResponse.headers);
       }
   });
 });
 
-app.get('/test_login', function(req, res) {
-  request({url:'http://g.e-hentai.org/home.php'}, 
+function test_login(req, res) {
+  request({url:'http://g.e-hentai.org/home.php'},
   function (error, httpResponse, body) {
       if (!error && httpResponse.statusCode == 200) {
     // success
@@ -346,7 +322,8 @@ app.get('/test_login', function(req, res) {
           '\n\n'+
           JSON.stringify(fieldsList).replace(/,/g,',\n')+
           '\n\n'+
-          JSON.stringify(request.cookies._jar ).replace(/,/g,',\n')+
+          JSON.stringify(request.cookies).replace(/,/g,',\n')+
+          //JSON.stringify(request.cookies._jar ).replace(/,/g,',\n')+
           '</pre>');
       }else {
         // error
@@ -360,12 +337,17 @@ app.get('/test_login', function(req, res) {
           '</pre>');
     }//end if
       } else {
-          //res.send('Request '+ httpResponse.url +' failed with response code ' + httpResponse.statusCode );  
+          //res.send('Request '+ httpResponse.url +' failed with response code ' + httpResponse.statusCode );
 	  //res.json(httpResponse.headers);
 	  res.send('Request '+' failed');
       }
   });
-});
+};
+
+test_login({},{send:console.log});
+console.log((request._jar && request._jar.setCookie));
+
+app.get('/test_login', test_login);
 
 app.get('/jar', function(req, res) {
   res.send('<pre>'+
@@ -374,7 +356,7 @@ app.get('/jar', function(req, res) {
     JSON.stringify(request.cookies._jar).replace(/,/g,',\n')+
     request.cookies.getCookieString('https://forums.e-hentai.org/') +
     '</pre>'
-  );  
+  );
 });
 
 
@@ -384,7 +366,7 @@ app.get('/testx', function(req, res) {
     followRedirects: true
   }).then(function(httpResponse) {
     // success
-    
+
   },function(httpResponse) {
     // error
     res.send('Request failed with response code ' + httpResponse.status + ' ' + httpResponse.headers);
@@ -493,8 +475,8 @@ app.get('/trss', function(req, res) {
     categories: ['Category 1','Category 2','Category 3'],
     pubDate: 'May 20, 2012 04:00:00 GMT',
     ttl: '60',
-});       
-/* loop over data and add to feed */   
+});
+/* loop over data and add to feed */
 feed.item({
     title:  'item title',
     description: 'use this for the content. It can include html.',
@@ -504,7 +486,7 @@ feed.item({
     author: 'Guest Author', // optional - defaults to feed author property
     date: 'May 27, 2012', // any format that js Date can parse.
     enclosure: {url:'...', file:'path-to-file'}, // optional enclosure
-});     
+});
 
      res.send('<pre>'+htmlspecialchars(feed.xml())+'</pre>');
      //res.send('create object');
@@ -517,4 +499,4 @@ feed.item({
 // });
 
 // Attach the Express app to Cloud Code.
-app.listen(8081);
+//app.listen(8081);
