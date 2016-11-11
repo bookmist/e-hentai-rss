@@ -1,18 +1,16 @@
-'use strict'; /* globals Parse: false */  /* globals require: false */
-// These two lines are required to initialize Express in Cloud Code.
+'use strict'; /* globals require: false */
+
+//requires
 var express = require('express');
+var bodyParser = require('body-parser');
+var rss = require('rss');
+var request = require('request-promise');
+
 var app = express();
 var logIndex = 1;
 
-var bodyParser = require('body-parser');
-
-//requires
-var rss = require('rss');
-
-var request = require('request');
-var j = request.jar();
-request = request.defaults({ jar : j });
-request.cookies=j;
+var jar = request.jar();
+request = request.defaults({ jar : jar });
 
 //functions
 
@@ -30,33 +28,6 @@ function htmlspecialchars(html) {
   return html;
 }
 
-//cookies to DB
-function saveCookies(cookies){//return promise
-  var promises = [];
-  for (var key in cookies) {
-    var cookieQuery = new Parse.Query('Cookie');
-    cookieQuery.equalTo('name',cookies[key].name);
-    promises.push(cookieQuery.find().then(function(){
-      var cookie = cookies[key];
-      return function(results) {
-        var dbCookie;
-        if (results.length>0) {
-          dbCookie = results[0];
-        } else {
-          dbCookie = new Parse.Object('Cookie');
-        }
-        dbCookie.set('name',cookie.name);
-        dbCookie.set('value',cookie.value);
-        dbCookie.set('expires',cookie.options.expires);
-        dbCookie.set('domain',cookie.options.domain);
-        return dbCookie.save();
-      };
-     }()
-    ));
-  }
-  return Parse.Promise.when(promises);
-}
-
 //Безопасно получить блок из результата str.match
 function safeGet(match,index){
   if (match !== null && match.length > index &&
@@ -67,107 +38,11 @@ function safeGet(match,index){
     return null;
   }
 }
-//Получить имя хоста из урла
-function getHostName(url) {
-  return safeGet(url.match(/:\/\/(www[0-9]?\.)?(.[^/:]+)/i),2)
-}
-
-// получить набор строк для фильтра Cookies
-function getDomainsList(domain){
-  var result = [];
-  result.push(domain);
-  var domainWords = domain.split('.');
-  while (domainWords.length > 1) {
-    result.push('.'+domainWords.join('.'));
-    domainWords.shift();
-  }
-  return result;
-}
-
-//Получить строку куков по домену
-function getCookies(domain){
-  var result='';
-  var query = new Parse.Query('Cookie');
-  query.containedIn('domain',getDomainsList(domain));
-  var q = new Parse.Query('Cookie');
-  q.greaterThan('expires', new Date());
-  var q1 = new Parse.Query('Cookie');
-  q1.equalTo('expires', undefined);
-  query._orQuery([q,q1]);
-  return query.find().then(function(results) {
-    results.forEach(function(resObj) {
-      result = result + resObj.get('name')+'='+resObj.get('value')+';';
-    });
-    return Parse.Promise.as(result);
-  });
-}
-
-function cookiedHttpRequest(params){
-  var hostname = getHostName(params.url);
-  return getCookies(hostname).then(function(cookieStr){
-    if (params.headers === undefined){
-      params.headers = {};
-    }
-    params.headers.Cookie=cookieStr;
-    var oldFollowRedirects = params.followRedirects;
-    if (oldFollowRedirects &&(params.maxRedirect === undefined)){
-      params.maxRedirect = 10;
-    }
-    params.followRedirects = false;
-    return Parse.Cloud.httpRequest(params).then(
-      function(httpResponse) {
-        // success
-        httpResponse.url = params.url;
-        return saveCookies(httpResponse.cookies).then(function(){
-          return Parse.Promise.as(httpResponse);
-        });
-      },function(httpResponse) {
-        return saveCookies(httpResponse.cookies).then(function(){
-          httpResponse.url = params.url;
-          //Обработка редиректа
-          if ( oldFollowRedirects && (
-              (httpResponse.status == 301)||
-              (httpResponse.status == 302)||
-              (httpResponse.status == 303)||
-              (httpResponse.status == 307)) &&
-            (!!httpResponse.headers.Location) &&
-            (params.maxRedirect>0)
-          ){
-            params.maxRedirect = params.maxRedirect - 1;
-            params.followRedirects = true;
-            params.url = httpResponse.headers.Location;
-            if (params.headers === undefined){
-              params.headers = {};
-            }
-            params.headers.Referer = httpResponse.url;
-            if (httpResponse.status === 303){
-              if (params.method != 'HEAD') {
-                params.method='GET';
-              }
-            }
-            return cookiedHttpRequest(params);
-          } else {
-            return Parse.Promise.error(httpResponse);
-          }
-        });
-      }
-    );
-  });
-}
 
 //handlers
 
-app.get('/testlog', function(req, res) {
-  console.log('yes');
-  res.send('try log');
-});
-
 app.get('/param', function(req, res) {
   res.json(req.query);
-});
-
-app.get('/needle', function(req, res) {
-  res.send(typeof needle.get);
 });
 
 app.get('/load', function(req, res) {
@@ -322,8 +197,7 @@ function test_login(req, res) {
           '\n\n'+
           JSON.stringify(fieldsList).replace(/,/g,',\n')+
           '\n\n'+
-          JSON.stringify(request.cookies).replace(/,/g,',\n')+
-          //JSON.stringify(request.cookies._jar ).replace(/,/g,',\n')+
+          JSON.stringify(jar).replace(/,/g,',\n')+
           '</pre>');
       }else {
         // error
