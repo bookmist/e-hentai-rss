@@ -4,18 +4,39 @@ var express = require('express');
 var app = express();
 var logIndex = 1;
 
-//var Parse = {};
-//Parse['']
-var needle = require('needle');
-
-// Global app configuration section
-app.set('views', 'cloud/views');  // Specify the folder to find templates
-app.set('view engine', 'ejs');    // Set the template engine
 var bodyParser = require('body-parser');
-//var bodyParser = app.use(express.bodyParser());    // Middleware for reading request body
 
 //requires
 var rss = require('rss');
+/*
+var tough = require('tough-cookie')
+
+var cookieStore = new tough.MemoryCookieStore();
+//var cookieStore = tough.MemoryCookieStore;
+
+var CookieJar = new tough.CookieJar(cookieStore);
+  
+var request = require('request');
+var request =  request.defaults({jar: true});
+//request.cookies = request.jar();
+request = request.jar(cookieStore);
+request.cookies = request._jar;
+request.cookies.store.synchronous = true;
+
+console.log( cookieStore.constructor.name);
+console.log( CookieJar.constructor.name);
+console.log( CookieJar.store.constructor.name);
+
+console.log( request.cookies.store.constructor.name);
+
+console.log((request._jar && request._jar.setCookie));
+*/
+
+var request = require('request');
+var j = request.jar()
+request = request.defaults({jar:j})
+
+console.log((request._jar && request._jar.setCookie));
 
 //functions
 
@@ -165,16 +186,6 @@ app.get('/testlog', function(req, res) {
   res.send('try log');
 });
 
-// This is an example of hooking up a request handler with a specific request
-// path and HTTP verb using the Express routing API.
-app.get('/hello', function(req, res) {
-  res.render('hello', { message: 'Congrats, you just set up your app!' });
-});
-
-app.get('/privet', function(req, res) {
-  res.render('hello', { message: 'Здравствуй мир' });
-});
-
 app.get('/param', function(req, res) {
   res.json(req.query);
 });
@@ -184,23 +195,13 @@ app.get('/needle', function(req, res) {
 });
 
 app.get('/load', function(req, res) {
-  //Parse.Cloud.httpRequest({
-//  cookiedHttpRequest({
-  needle.get('http://g.e-hentai.org/home.php',{
-    //'http://exhentai.org/'
-    //url: 'http://www.parse.com/',
-    //url: 'http://ya.ru/',
-    //url: 'http://g.e-hentai.org/home.php',
-    follow: 10,
-    follow_set_cookies: true,
-    follow_set_referer: true
-  },function(err, httpResponse){
-    if (!!err){
-      res.send('Request '+ httpResponse.url +' failed with response code ' + httpResponse.statusCode );
-    } else {
-      //res.send('Request '+ httpResponse.url +' successed with response code ' + httpResponse.statusCode );
-      res.send(htmlspecialchars(httpResponse.body));
-    }
+  request({url:'http://g.e-hentai.org/home.php'}, 
+  function (error, response, body) {
+      if (!error && response.statusCode == 200) {
+          res.send(htmlspecialchars(response.body));
+      } else {
+          res.send('Request '+ response.url +' failed with response code ' + response.statusCode );  
+      }
   });
 });
 
@@ -275,14 +276,12 @@ app.get('/parse', function(req, res) {
 });
 
 app.get('/test', function(req, res) {
-  Parse.Cloud.httpRequest({
-    url: 'http://g.e-hentai.org/home.php',
-    followRedirects: true
-  }).then(function(httpResponse) {
+  request({url:'http://g.e-hentai.org/home.php'}, 
+  function (error, httpResponse, body) {
+      if (!error && httpResponse.statusCode == 200) {
     // success
-
     //load form fields
-    var inputList = httpResponse.text.match( /<input [^>]+>/ig );
+    var inputList = httpResponse.body.match( /<input [^>]+>/ig );
     var fieldsList = {};
     for (var i=0; i<inputList.length; i++) {
       var name=inputList[i].match(/name="(\w+)"/);
@@ -295,21 +294,89 @@ app.get('/test', function(req, res) {
         }
       }
     }
-
-    res.send(htmlspecialchars(httpResponse.text)+'<pre>'+
+    console.log(typeof request.jar());
+    res.send(htmlspecialchars(httpResponse.body)+'<pre>'+
     JSON.stringify(httpResponse.headers).replace(/,/g,',\n') +'\n'+
       JSON.stringify(fieldsList).replace(/,/g,',\n')+
       '\n\n'+
-      JSON.stringify(httpResponse.cookies).replace(/,/g,',\n')+
-      '\n'+ httpResponse.cookies.toString() +
+      JSON.stringify(request.jar()).replace(/,/g,',\n')+
+//      '\n'+ httpResponse.cookies.toString() +
       '</pre>'
     );
-  },function(httpResponse) {
-    // error
-    //res.send('Request failed with response code ' + httpResponse.status + ' ' + httpResponse.headers);
-    res.json(httpResponse.headers);
+      } else {
+          //res.send('Request '+ httpResponse.url +' failed with response code ' + httpResponse.statusCode );  
+	  res.json(httpResponse.headers);
+      }
   });
 });
+
+app.get('/test_login', function(req, res) {
+  request({url:'http://g.e-hentai.org/home.php'}, 
+  function (error, httpResponse, body) {
+      if (!error && httpResponse.statusCode == 200) {
+    // success
+    if (!!(~httpResponse.body.indexOf("act=Login"))) {
+    //load form fields
+    var inputList = httpResponse.body.match( /<input [^>]+>/ig );
+    var fieldsList = {};
+    for (var i=0; i<inputList.length; i++) {
+      var name=inputList[i].match(/name="(\w+)"/);
+      if (name !== null) {
+        var value=inputList[i].match(/value="([^"]+)"/);
+        if (value === null) {
+          fieldsList[name[1]]="";
+        } else {
+          fieldsList[name[1]]=value[1];
+        }
+      }
+    }
+      //Set login and password
+      fieldsList.UserName='tumanchik';
+      fieldsList.PassWord='123asd';
+
+      request({
+        method: 'POST',
+        url: 'https://forums.e-hentai.org/index.php?act=Login&CODE=01',
+        followRedirects: true,
+        form: fieldsList
+      },function (error, httpResponse, body) {
+      if (!error && httpResponse.statusCode == 200) {
+        res.send(htmlspecialchars(httpResponse.body)+'<pre>'+
+          JSON.stringify(httpResponse.headers).replace(/,/g,',\n') +
+          '\n\n'+
+          JSON.stringify(fieldsList).replace(/,/g,',\n')+
+          '\n\n'+
+          JSON.stringify(request.cookies._jar ).replace(/,/g,',\n')+
+          '</pre>');
+      }else {
+        // error
+        console.log(JSON.stringify(error));
+        res.send('Request '+' failed');// with response code ' + httpResponse.status + ' ' + httpResponse.headers.toJSON());
+      }
+      });
+    }else {
+        res.send(htmlspecialchars(httpResponse.body)+'<pre>'+
+          JSON.stringify(httpResponse.headers).replace(/,/g,',\n') +
+          '</pre>');
+    }//end if
+      } else {
+          //res.send('Request '+ httpResponse.url +' failed with response code ' + httpResponse.statusCode );  
+	  //res.json(httpResponse.headers);
+	  res.send('Request '+' failed');
+      }
+  });
+});
+
+app.get('/jar', function(req, res) {
+  res.send('<pre>'+
+    JSON.stringify(request.cookies ).replace(/,/g,',\n')+
+    JSON.stringify(request.cookies.getCookies('https://forums.e-hentai.org/') ).replace(/,/g,',\n')+
+    JSON.stringify(request.cookies._jar).replace(/,/g,',\n')+
+    request.cookies.getCookieString('https://forums.e-hentai.org/') +
+    '</pre>'
+  );  
+});
+
 
 app.get('/testx', function(req, res) {
   cookiedHttpRequest({
