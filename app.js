@@ -5,7 +5,9 @@
 var express = require('express');
 var bodyParser = require('body-parser');
 var rss = require('rss');
-var request = require('request');
+var request = require('request-promise');
+var promise = require('bluebird');
+var cheerio = require('cheerio');
 
 var app = express();
 var logIndex = 1;
@@ -20,11 +22,11 @@ function htmlspecialchars(html) {
         html = html.toString();
     }
     // Сначала необходимо заменить &
-    html = html.replace(/&/g, "&amp;");
+    html = html.replace(/&/g, '&amp;');
     // А затем всё остальное в любой последовательности
-    html = html.replace(/</g, "&lt;");
-    html = html.replace(/>/g, "&gt;");
-    html = html.replace(/"/g, "&quot;");
+    html = html.replace(/</g, '&lt;');
+    html = html.replace(/>/g, '&gt;');
+    html = html.replace(/"/g, '&quot;');
     // Возвращаем полученное значение
     return html;
 }
@@ -81,6 +83,43 @@ function parseEx(page) {
         //result.raw2=cols2;
         results.push(result);
     }
+    return results;
+}
+
+function parseEx2(page) {
+    var $=cheerio.load(page);
+    var rows = $('table.itg').children('tr');
+    var results = [];
+    var result;
+    //var item = rows.first().next();
+    //return rows.last().next().next().length;
+    for(var item = rows.first();item.length>0;item=item.next()){
+        result={};
+        result.type=item.children('td.itdc').children('a').children('img.ic').attr('alt');
+        result.typeImg=item.children('td.itdc').children('a').children('img.ic').attr('src');
+        result.date=item.children('td.itd').first().text();
+        var descr = item.children('td.itd').first().next();
+        result.image=descr.find('div.it2').children('img').attr('src');
+        if (result.image == undefined){
+            result.image=descr.find('div.it2').text();
+            var a = result.image.split("~", 4);
+            if (a.length == 4) {
+                if (a[0] == "init") {
+                    result.image = 'http://' + a[1] + "/" + a[2];
+                } else {
+                    if (a[0] == "inits") {
+                        result.image = 'https://' + a[1] + "/" + a[2];
+                    }
+                }
+            }
+        }
+        result.url=descr.find('div.it5').children('a').attr('href');
+        result.title=descr.find('div.it5').children('a').text();
+        result.tags=descr.find('div.it4t').html();
+        result.uploader=item.children('td.itu').first().text();
+        //result.td=descr.html();
+        results.push(result);
+    };
     return results;
 }
 
@@ -219,12 +258,55 @@ function test_login(req, res) {
         });
 };
 
+function test_login_promise(req, res) {
+    return request({url: 'http://g.e-hentai.org/home.php'}).then(
+        function (body) {
+
+            // success
+            if (!!(~body.indexOf("act=Login"))) {
+                //load form fields
+                var inputList = body.match(/<input [^>]+>/ig);
+                var fieldsList = {};
+                for (var i = 0; i < inputList.length; i++) {
+                    var name = inputList[i].match(/name="(\w+)"/);
+                    if (name !== null) {
+                        var value = inputList[i].match(/value="([^"]+)"/);
+                        if (value === null) {
+                            fieldsList[name[1]] = "";
+                        } else {
+                            fieldsList[name[1]] = value[1];
+                        }
+                    }
+                }
+                //Set login and password
+                fieldsList.UserName = 'tumanchik';
+                fieldsList.PassWord = '123asd';
+
+                return request({
+                    method: 'POST',
+                    url: 'https://forums.e-hentai.org/index.php?act=Login&CODE=01',
+                    followRedirects: true,
+                    form: fieldsList
+                }).then( function (body) {
+                    return promise.resolve(htmlspecialchars(body) + '<pre>' +
+                            //JSON.stringify(httpResponse.headers).replace(/,/g, ',\n') +
+                            '\n\n' +
+                            JSON.stringify(fieldsList).replace(/,/g, ',\n') +
+                            '\n\n' +
+                            JSON.stringify(jar).replace(/,/g, ',\n') +
+                            '</pre>');
+                    });
+            } else {
+                return promise.reject(htmlspecialchars(httpResponse.body) + '<pre>' +
+                    JSON.stringify(httpResponse.headers).replace(/,/g, ',\n') +
+                    '</pre>');
+            }//end if
+        });
+};
+
 function testSadPanda(req, res) {
     request({
-            url: 'https://exhentai.org/', followRedirect: false,
-            headers: {
-                Cookie: jar.getCookieString()
-            }
+            url: 'https://exhentai.org/', followRedirect: true
         },
         function (error, httpResponse, body) {
             res.send('test');
@@ -233,20 +315,45 @@ function testSadPanda(req, res) {
                     res.send(JSON.stringify(httpResponse.request.headers));
                     res.send('sad panda :(');
                 } else {
-                    res.send(httpResponse.caseless.get('location'));
+                    //res.send(httpResponse.caseless.get('location'));
                     res.send(httpResponse.statusCode);
-                    res.send(JSON.stringify(body));
+                    //res.send(JSON.stringify(body));
                 }
                 // success
             } else {
                 res.send('error' + JSON.stringify(error));
+                res.send(httpResponse.caseless.get('location'));
+                res.send(httpResponse.request.headers);
             }
             ;
         });
 }
 
-test_login({}, {send: console.log});
-testSadPanda({}, {send: console.log});
+function parse2(req, res) {
+    return request({
+        url: 'http://exhentai.org/',
+        followRedirect: true
+    }).then(function (body) {
+        return promise.resolve(exhentaiToRss(body).xml());
+    });
+}
+
+function parse(req, res) {
+    return request({
+        url: 'http://exhentai.org/',
+        followRedirect: true
+    }).then(function (body) {
+        return promise.resolve(parseEx2(body));
+    });
+};
+//test_login({}, {send: console.log});
+test_login_promise({}, {send: console.log}).then(function(param){
+    console.log(param);
+    //testSadPanda({}, {send: console.log});
+    parse().then(function(param){
+        console.log(param);})
+});
+//testSadPanda({}, {send: console.log});
 //console.log((request._jar && request._jar.setCookie));
 
 app.get('/test_login', test_login);
